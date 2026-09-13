@@ -1,0 +1,30 @@
+{
+  "name": "wisp-dapp-example-vanilla-vite",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@walletconnect/ethereum-provider": "2.23.10",
+    "@windstack/evm": "2.2.0",
+    "@windstack/vexanium": "2.2.0",
+    "@windstack/wallet-plugin-wisp": "2.2.0",
+    "viem": "2.55.19"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "8.0.16"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "overrides": {
+    "axios": "1.19.0"
+  }
+}
