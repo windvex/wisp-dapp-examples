@@ -1,52 +1,79 @@
 # Troubleshooting
 
-## “Wisp Native provider was not found”
+## Wisp Native is not found
 
-The page is not inside the Wisp Android DApp Browser, or provider discovery timed out. On an external browser, deploy to HTTPS and use the Wisp Telegram handoff.
+If the page is not running inside Wisp Wallet, a Native provider may not be available directly in the page. Use an HTTPS deployment so the example can use Wisp Telegram instead.
 
-## “Telegram native handoff requires an HTTPS page”
+## Wisp Telegram requires HTTPS
 
-Vite's default local URL is HTTP. Use an HTTPS development tunnel or deploy the built site. Keep the configured Wisp API at `https://api.windcrypto.com/wisp/v1`.
+A local Vite URL normally uses HTTP. Use an HTTPS development tunnel or deploy the example to an HTTPS host before testing the Telegram path.
 
-## Telegram opened but the page briefly loses network
+Keep the API URL at:
 
-Android may suspend the browser while Telegram is in front. Resume polling the same handoff ID. Do not prepare a second request.
+```text
+https://api.windcrypto.com/wisp/v1
+```
 
-## Telegram request expired
+unless you intentionally use another compatible Wisp endpoint.
 
-Start a new request only after the old request is confirmed expired. Ask the user to approve or reject before the expiry time.
+## A saved Telegram session will not connect
+
+The example calls `restore()` when the page opens. Wisp checks whether the saved session still belongs to the same dApp, account, chain, and permission and whether it is still valid.
+
+If the session was expired or revoked, the dApp returns to the disconnected state. Press Connect to start a new session.
+
+If restore fails because of a temporary network problem, fix the connection and reload the page before starting another connection request.
+
+## Connect opens while the page is loading
+
+Do not call `connect()` from page startup. Startup should only call `restore()`. The Connect button should become available after restore has finished.
 
 ## WalletConnect says the project ID is missing
 
-Create `.env` from `.env.example`, add `VITE_WALLETCONNECT_PROJECT_ID`, and restart Vite. This setting is only required for the external EVM WalletConnect v2 path.
+Create `.env` from `.env.example`, add `VITE_WALLETCONNECT_PROJECT_ID`, and restart Vite.
 
-## WalletConnect cannot pair with VEX Native
+This setting is only required for the external VEX EVM WalletConnect path.
 
-That is expected. WalletConnect v2 is used for VEX EVM. VEX Native uses VexaniumProvider v1 or the Wisp Telegram VSR handoff.
+## WalletConnect cannot connect VEX Native
+
+WalletConnect v2 in these examples is for VEX EVM. VEX Native uses WindStack with Wisp Wallet or the Wisp Telegram transport.
 
 ## Wrong EVM chain
 
-Press **Switch/Add VEX EVM Network**. The expected chain is `6736` (`0x1a50`) and the RPC is `https://api.windcrypto.com/rpc`.
+Use **Switch/Add VEX EVM Network** after connecting the wallet.
+
+VEX EVM uses:
+
+```text
+Chain ID: 6736
+Hex:      0x1a50
+RPC:      https://api.windcrypto.com/rpc
+```
 
 ## `wallet_switchEthereumChain` returns 4902
 
-The wallet does not know VEX EVM yet. Call `wallet_addEthereumChain` with the values in [evm.md](evm.md), then switch again. Other error codes should be displayed to the user rather than treated as “network missing.”
+The wallet does not have VEX EVM saved yet. Add the network with `wallet_addEthereumChain`, then switch again. The example does this from `ensureVexEvmNetwork()`.
 
 ## Balance request fails
 
-Check the configured RPC, browser network panel, and account/address format. Native balance uses `/v1/chain/get_currency_balance`; EVM balance uses `eth_getBalance` through the EVM RPC.
+Check:
+
+- the configured RPC URL
+- the connected Native account or EVM address
+- the browser network panel
+- whether the selected wallet is still connected
 
 ## The wallet rejected the request
 
-This is a normal outcome, not an RPC failure. Keep the form intact, show a clean rejection message, and do not automatically open another approval.
+Keep the form values and show the rejection to the user. Do not automatically open another approval request.
 
-## Disconnect does not revoke an injected EVM permission
+## Disconnect does not remove an injected EVM site's permission
 
-EIP-1193 has no universal injected-wallet disconnect method. The example clears its own account state and listeners. Revoke the site's permission from the wallet when needed.
+The example's EVM Disconnect button clears local dApp state and listeners. An injected EVM wallet remains responsible for its own site permissions. WalletConnect sessions use WalletConnect's disconnect method.
 
 ## Build or type errors
 
-Use Node.js 22 or newer, then reinstall and check:
+Use Node.js 20.19 or newer, then install dependencies again:
 
 ```bash
 rm -rf node_modules
@@ -54,4 +81,4 @@ npm install
 npm run check
 ```
 
-Do not delete `.env` if it contains your local WalletConnect project ID, and never commit that file.
+Do not commit `.env` if it contains your WalletConnect project ID or other local settings.

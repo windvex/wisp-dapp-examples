@@ -1,93 +1,145 @@
 # VEX Native
 
-VEX Native uses the WindStack VexaniumProvider v1 interface. Wisp Android injects this provider in its DApp Browser. An external HTTPS page can use the portable Wisp Telegram VSR handoff instead.
+VEX Native dApps use `@windstack/vexanium` for wallet connection and transactions.
 
-## Packages
+## Install
 
 ```bash
-npm install @windstack/core @windstack/vexanium @wharfkit/abicache @wharfkit/antelope
+npm install @windstack/vexanium@2.2.0 @windstack/wallet-plugin-wisp@2.2.0
 ```
 
-`@windstack/vexanium` exports the canonical `vexNative` chain definition. Use `vexNative.chainId` instead of duplicating the chain ID in application code.
+## Create the client
+
+```ts
+import { createVexaniumClient } from "@windstack/vexanium";
+
+const vex = await createVexaniumClient({
+  providerRdns: "com.wisp.wallet",
+  rpcUrl: "https://api.windcrypto.com",
+  dapp: {
+    name: "My dApp",
+    url: window.location.href,
+  },
+});
+```
+
+`providerRdns` selects Wisp when more than one compatible Native wallet is available.
 
 ## Connect
 
-```ts
-const client = await createVexaniumClient({
-  providerRdns: "com.wisp.wallet",
-  discoveryTimeoutMs: 1_200,
-  autoSync: true,
-  dapp: { name, description, url: window.location.href },
-});
+Connect only after the user presses a Connect button:
 
-const accounts = await client.connect({
+```ts
+const account = await vex.connectOne();
+console.log(account.actor);
+console.log(account.permission);
+```
+
+## Restore after reload
+
+Save the wallet session ID after a successful connection:
+
+```ts
+const sessionId = vex.getSession()?.walletSessionId;
+```
+
+On the next page load, restore that session before showing a new Connect request:
+
+```ts
+import { restoreVexaniumSession, vexNative } from "@windstack/vexanium";
+
+const restored = await restoreVexaniumSession(vex, {
+  sessionId,
   chainId: vexNative.chainId,
-  requiredCapabilities: [
-    "vex.accounts",
-    "vex.sessions",
-    "vex.signingRequest",
+});
+```
+
+If restore fails because the session is no longer valid, clear the saved session ID and show the disconnected state. Do not call Connect automatically from page startup.
+
+## Read a balance
+
+A VEX balance can be read from the Native RPC:
+
+```ts
+const response = await fetch(
+  "https://api.windcrypto.com/v1/chain/get_currency_balance",
+  {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      code: "vex.token",
+      account: account.actor,
+      symbol: "VEX",
+    }),
+  },
+);
+
+const [balance = "0.0000 VEX"] = await response.json();
+```
+
+Check `response.ok` and validate the response before showing it. The example module includes those checks.
+
+## Send a transaction
+
+Use structured actions with `transact()`:
+
+```ts
+const result = await vex.transact({
+  actions: [
+    {
+      account: "vex.token",
+      name: "transfer",
+      data: {
+        from: account.actor,
+        to: "receiver",
+        quantity: "1.0000 VEX",
+        memo: "Example transfer",
+      },
+    },
   ],
 });
 ```
 
-`providerRdns` selects Wisp deterministically. If a product lets users choose between wallets, show an explicit chooser rather than taking the first provider discovered.
+When `authorization` is omitted, WindStack uses the connected wallet permission.
 
-## Keep state synchronized
+## Multiple actions
 
-Register one session listener and remove it when the component is disposed:
+Put every action in one array:
 
 ```ts
-const unsubscribe = client.subscribeSession(({ accounts, reason }) => {
-  const currentAccount = accounts[0] ?? null;
-  console.log(reason, currentAccount);
+await vex.transact({
+  actions: [firstAction, secondAction, thirdAction],
 });
 ```
 
-The callback covers account updates, chain updates, and wallet disconnects. Do not add a new listener on each button click.
+The wallet receives one transaction containing all actions.
 
-## Read a balance
+## Call another contract
 
-Call `POST /v1/chain/get_currency_balance` on `https://api.windcrypto.com` with:
-
-```json
-{
-  "code": "vex.token",
-  "account": "alice",
-  "symbol": "VEX"
-}
-```
-
-The response is a string array such as `["1.2345 VEX"]`. An empty array means `0.0000 VEX`.
-
-## Create and sign a transfer
-
-VEX has 4 decimals. A normal transfer action is:
+Change the contract, action name, and data:
 
 ```ts
-const action = {
-  account: "vex.token",
-  name: "transfer",
-  authorization: [{ actor, permission }],
-  data: {
-    from: actor,
-    to: recipient,
-    quantity: "0.0001 VEX",
-    memo: "My dApp transfer",
-  },
-};
+await vex.transact({
+  actions: [
+    {
+      account: "yourcontract",
+      name: "youraction",
+      data: {
+        owner: account.actor,
+        value: "example",
+      },
+    },
+  ],
+});
 ```
 
-Create a VSR with `createSigningRequest`, then call `client.signSigningRequest({ request, broadcast: true })`. The wallet displays and approves the real action; the result contains the broadcast transaction ID.
+WindStack loads the contract ABI through the configured Vexanium RPC.
 
-To call your own contract, replace `account`, `name`, and `data`. Do not change the authorization to an account the connected wallet cannot sign for.
+## Input checks used by the example
 
-## Validation checklist
+- VEX account names use `a-z`, `1-5`, and `.` with a maximum of 12 characters.
+- VEX amounts use 4 decimals.
+- Transfer amounts must be greater than zero.
+- The example limits the transfer memo to 256 UTF-8 bytes.
 
-- VEX account and permission names: 1–12 characters using `a-z`, `1-5`, and `.`.
-- Amount: positive, at most 4 decimals, formatted as `0.0000 VEX`.
-- Memo: at most 256 UTF-8 bytes for the example transfer.
-- Chain: `vexNative.chainId`.
-- Contract: `vex.token` for a standard VEX transfer.
-- Treat rejection, disconnect, RPC errors, and broadcast errors as separate visible failures.
-
-See the complete small implementation in each framework's `src/lib/wispNative.ts`.
+See `react-vite/src/lib/wispNative.ts` or `vue-vite/src/lib/wispNative.ts` for the complete example.

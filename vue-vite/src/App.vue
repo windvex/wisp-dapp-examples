@@ -24,6 +24,7 @@ import {
   disconnectNative,
   getNativeAccount,
   getNativeBalance,
+  restoreNative,
   sendNativeTransfer,
   subscribeNative,
   type NativeConnection,
@@ -38,6 +39,7 @@ type ResultState = { title: string; value: unknown; at: string };
 
 const environment = detectEnvironment();
 const native = ref<NativeConnection | null>(null);
+const restoringNative = ref(true);
 const nativeBalance = ref("");
 const nativeForm = reactive({ recipient: "", amount: "0.0001", memo: "Wisp example" });
 const evm = ref<EvmConnection | null>(null);
@@ -47,12 +49,16 @@ const busy = ref("");
 const error = ref("");
 const result = ref<ResultState | null>(null);
 
-let stopNative: () => void = () => {};
-let stopEvm: () => void = () => {};
+let stopNative: () => unknown = () => undefined;
+let stopEvm: () => unknown = () => undefined;
 
 onMounted(() => {
   stopNative = subscribeNative((connection) => { native.value = connection; });
   stopEvm = subscribeEvm((connection) => { evm.value = connection; });
+
+  void restoreNative()
+    .catch((caught) => { error.value = message(caught); })
+    .finally(() => { restoringNative.value = false; });
 });
 
 onUnmounted(() => {
@@ -78,6 +84,10 @@ async function run<T>(title: string, operation: () => Promise<T>) {
   } finally {
     busy.value = "";
   }
+}
+
+function nativeDisabled() {
+  return Boolean(busy.value) || restoringNative.value;
 }
 
 async function handleConnectNative() {
@@ -171,7 +181,7 @@ async function handleEvmDisconnect() {
 function renderedResult() {
   return result.value
     ? JSON.stringify(result.value.value, null, 2)
-    : "Connect a wallet or submit a transaction to see its typed result.";
+    : "Connect a wallet or send a transaction to see the result.";
 }
 </script>
 
@@ -180,7 +190,7 @@ function renderedResult() {
     <header class="hero">
       <span class="eyebrow">Vue 3 + Vite + TypeScript</span>
       <h1>Wisp dApp Example</h1>
-      <p>Connect, read balances, and request deliberate VEX Native or VEX EVM transactions.</p>
+      <p>Connect Wisp Wallet, read balances, and send example VEX Native or VEX EVM transactions.</p>
     </header>
 
     <div v-if="error" class="notice error" role="alert"><strong>Request failed</strong><span>{{ error }}</span></div>
@@ -190,9 +200,9 @@ function renderedResult() {
       <div class="section-heading"><div><span class="step">01</span><h2>Environment</h2></div><span class="status">{{ environment.runtime }}</span></div>
       <dl class="info-grid">
         <div class="info-row"><dt>Runtime</dt><dd>{{ environment.runtime }}</dd></div>
-        <div class="info-row"><dt>Secure context</dt><dd>{{ environment.isSecureContext ? "Yes" : "No — Telegram handoff needs HTTPS" }}</dd></div>
-        <div class="info-row"><dt>Injected Native</dt><dd>{{ environment.hasInjectedNative ? "Wisp detected" : "Not detected" }}</dd></div>
-        <div class="info-row"><dt>Injected EVM</dt><dd>{{ environment.hasInjectedEvm ? "Wisp detected" : "Not detected" }}</dd></div>
+        <div class="info-row"><dt>Secure context</dt><dd>{{ environment.isSecureContext ? "Yes" : "No — Wisp Telegram requires HTTPS" }}</dd></div>
+        <div class="info-row"><dt>Wisp Native</dt><dd>{{ environment.hasInjectedNative ? "Available" : "Not detected" }}</dd></div>
+        <div class="info-row"><dt>Wisp EVM</dt><dd>{{ environment.hasInjectedEvm ? "Available" : "Not detected" }}</dd></div>
         <div class="info-row"><dt>Native RPC</dt><dd>{{ VEX_NATIVE_RPC }}</dd></div>
         <div class="info-row"><dt>EVM RPC</dt><dd>{{ VEX_EVM_RPC }}</dd></div>
         <div class="info-row"><dt>Wisp API</dt><dd>{{ WISP_API_URL }}</dd></div>
@@ -201,13 +211,14 @@ function renderedResult() {
 
     <div class="columns">
       <section class="card">
-        <div class="section-heading"><div><span class="step">02</span><h2>VEX Native</h2></div><span class="status">{{ native?.method || "Disconnected" }}</span></div>
+        <div class="section-heading"><div><span class="step">02</span><h2>VEX Native</h2></div><span class="status">{{ restoringNative ? "Restoring…" : native?.method || "Disconnected" }}</span></div>
         <div class="button-grid">
-          <button :disabled="Boolean(busy)" @click="handleConnectNative">Connect Wisp Native</button>
-          <button class="secondary" :disabled="Boolean(busy)" @click="handleNativeAccount">Get Account</button>
-          <button class="secondary" :disabled="Boolean(busy)" @click="handleNativeBalance">Get VEX Balance</button>
-          <button class="ghost" :disabled="Boolean(busy)" @click="handleNativeDisconnect">Disconnect</button>
+          <button :disabled="nativeDisabled()" @click="handleConnectNative">Connect Wisp Native</button>
+          <button class="secondary" :disabled="nativeDisabled() || !native" @click="handleNativeAccount">Get Account</button>
+          <button class="secondary" :disabled="nativeDisabled() || !native" @click="handleNativeBalance">Get VEX Balance</button>
+          <button class="ghost" :disabled="nativeDisabled() || !native" @click="handleNativeDisconnect">Disconnect</button>
         </div>
+        <p class="hint">A saved Wisp session is checked when the page opens. Connecting is only requested when you press Connect.</p>
         <dl class="compact-info">
           <div class="info-row"><dt>Account</dt><dd>{{ native?.account.permissionLevel || "—" }}</dd></div>
           <div class="info-row"><dt>Chain</dt><dd>{{ native?.chainId || VEX_NATIVE_CHAIN_ID }}</dd></div>
@@ -218,7 +229,7 @@ function renderedResult() {
           <label>Recipient<input v-model="nativeForm.recipient" required placeholder="receiver" autocomplete="off" /></label>
           <label>Amount (VEX)<input v-model="nativeForm.amount" required inputmode="decimal" /></label>
           <label>Memo<input v-model="nativeForm.memo" maxlength="256" /></label>
-          <button type="submit" :disabled="Boolean(busy)">Sign Native Transaction</button>
+          <button type="submit" :disabled="nativeDisabled() || !native">Send Native Transaction</button>
         </form>
       </section>
 
@@ -227,10 +238,10 @@ function renderedResult() {
         <div class="button-grid">
           <button :disabled="Boolean(busy)" @click="handleConnectInjectedEvm">Connect Wisp EVM</button>
           <button class="secondary" :disabled="Boolean(busy) || !isWalletConnectConfigured()" @click="handleConnectWalletConnect">Connect WalletConnect v2</button>
-          <button class="secondary" :disabled="Boolean(busy)" @click="handleEnsureNetwork">Switch/Add VEX EVM Network</button>
-          <button class="secondary" :disabled="Boolean(busy)" @click="handleEvmAddress">Get Address</button>
-          <button class="secondary" :disabled="Boolean(busy)" @click="handleEvmBalance">Get Native VEX Balance</button>
-          <button class="ghost" :disabled="Boolean(busy)" @click="handleEvmDisconnect">Disconnect</button>
+          <button class="secondary" :disabled="Boolean(busy) || !evm" @click="handleEnsureNetwork">Switch/Add VEX EVM Network</button>
+          <button class="secondary" :disabled="Boolean(busy) || !evm" @click="handleEvmAddress">Get Address</button>
+          <button class="secondary" :disabled="Boolean(busy) || !evm" @click="handleEvmBalance">Get Native VEX Balance</button>
+          <button class="ghost" :disabled="Boolean(busy) || !evm" @click="handleEvmDisconnect">Disconnect</button>
         </div>
         <p v-if="!isWalletConnectConfigured()" class="hint">WalletConnect requires <code>VITE_WALLETCONNECT_PROJECT_ID</code>.</p>
         <dl class="compact-info">
@@ -242,7 +253,7 @@ function renderedResult() {
           <h3>EVM transfer</h3>
           <label>Recipient<input v-model="evmForm.recipient" required placeholder="0x..." autocomplete="off" /></label>
           <label>Amount (VEX)<input v-model="evmForm.amount" required inputmode="decimal" /></label>
-          <button type="submit" :disabled="Boolean(busy)">Send EVM Transaction</button>
+          <button type="submit" :disabled="Boolean(busy) || !evm">Send EVM Transaction</button>
         </form>
       </section>
     </div>
@@ -250,15 +261,15 @@ function renderedResult() {
     <section class="card full">
       <div class="section-heading"><div><span class="step">04</span><h2>Wallet Information</h2></div></div>
       <dl class="info-grid">
-        <div class="info-row"><dt>Native transport</dt><dd>{{ native?.method || "Not connected" }}</dd></div>
+        <div class="info-row"><dt>Native connection</dt><dd>{{ native?.method || "Not connected" }}</dd></div>
         <div class="info-row"><dt>Native account</dt><dd>{{ native?.account.permissionLevel || "—" }}</dd></div>
-        <div class="info-row"><dt>EVM transport</dt><dd>{{ evm?.method || "Not connected" }}</dd></div>
+        <div class="info-row"><dt>EVM connection</dt><dd>{{ evm?.method || "Not connected" }}</dd></div>
         <div class="info-row"><dt>EVM address</dt><dd>{{ evm?.address || "—" }}</dd></div>
       </dl>
     </section>
 
     <section class="card full result-card">
-      <div class="section-heading"><div><span class="step">05</span><h2>Transaction Result</h2></div><span class="status">{{ result ? `${result.title} · ${result.at}` : "No request yet" }}</span></div>
+      <div class="section-heading"><div><span class="step">05</span><h2>Latest Result</h2></div><span class="status">{{ result ? `${result.title} · ${result.at}` : "No request yet" }}</span></div>
       <pre>{{ renderedResult() }}</pre>
     </section>
   </main>

@@ -1,6 +1,12 @@
 # VEX EVM
 
-VEX EVM uses standard Ethereum wallet interfaces. Wisp Android provides an EIP-1193 provider and announces it with EIP-6963. External sessions use WalletConnect v2.
+VEX EVM uses standard Ethereum wallet interfaces. The examples use `@windstack/evm` for provider discovery, account access, network switching, and wallet requests.
+
+## Install
+
+```bash
+npm install @windstack/evm@2.2.0 @windstack/vexanium@2.2.0 viem
+```
 
 ## Network
 
@@ -10,56 +16,116 @@ VEX EVM uses standard Ethereum wallet interfaces. Wisp Android provides an EIP-1
 | Chain ID hex | `0x1a50` |
 | RPC | `https://api.windcrypto.com/rpc` |
 | Currency | VEX, 18 decimals |
-| Explorer | `https://explorer.windcrypto.com/evm` |
 
-## Discover Wisp
+The example reads the VEX EVM metadata from `@windstack/vexanium` instead of duplicating it in application code.
 
-Listen for `eip6963:announceProvider`, dispatch `eip6963:requestProvider`, and match `detail.info.rdns === "com.wisp.wallet"`. Remove the listener after the discovery window.
+## Find Wisp Wallet
 
-The example only falls back to `window.ethereum` when it has Wisp's marker. It never silently chooses an unrelated injected wallet. If multiple Wisp providers are announced, a production app should ask the user which provider to use.
-
-## Connect and observe
+Wisp announces its EVM provider with EIP-6963. Select the provider whose RDNS is `com.wisp.wallet`:
 
 ```ts
-const accounts = await provider.request({ method: "eth_requestAccounts" });
-const chainId = await provider.request({ method: "eth_chainId" });
+import { createEVMClient, discoverEVMProviders } from "@windstack/evm";
 
-provider.on?.("accountsChanged", handleAccountsChanged);
-provider.on?.("chainChanged", handleChainChanged);
-provider.on?.("disconnect", handleDisconnect);
+const providers = await discoverEVMProviders();
+const wisp = providers.find(({ info }) => info.rdns === "com.wisp.wallet");
+
+if (!wisp) throw new Error("Wisp Wallet was not found");
+
+const evm = await createEVMClient({ provider: wisp.provider });
 ```
 
-Remove those listeners when the component is disposed.
+If your app supports more than one wallet, show the available wallets to the user instead of choosing one silently.
 
-## Switch or add the network
-
-First call `wallet_switchEthereumChain` with `0x1a50`. If the provider returns error code `4902`, call `wallet_addEthereumChain` with the network values above and then switch again.
-
-Do not call network switching automatically when the page loads. Connect first and make the user's action clear.
-
-## Balance and transfer
-
-The example uses `viem` only for typed address/amount validation and read-only RPC calls:
+## Connect
 
 ```ts
-const client = createPublicClient({
+const accounts = await evm.connect();
+const address = accounts[0];
+const chainId = await evm.getChainId();
+```
+
+Listen for wallet changes once and remove the listeners when the page is disposed:
+
+```ts
+const onAccountsChanged = (accounts: string[]) => {
+  console.log(accounts);
+};
+
+const onChainChanged = (chainId: string) => {
+  console.log(chainId);
+};
+
+evm.on("accountsChanged", onAccountsChanged);
+evm.on("chainChanged", onChainChanged);
+
+// later
+evm.off("accountsChanged", onAccountsChanged);
+evm.off("chainChanged", onChainChanged);
+```
+
+## Switch or add VEX EVM
+
+```ts
+try {
+  await evm.switchChain("0x1a50");
+} catch (error) {
+  if ((error as { code?: number }).code !== 4902) throw error;
+
+  await evm.addChain({
+    chainId: "0x1a50",
+    chainName: "VEX EVM",
+    nativeCurrency: {
+      name: "VEX",
+      symbol: "VEX",
+      decimals: 18,
+    },
+    rpcUrls: ["https://api.windcrypto.com/rpc"],
+  });
+
+  await evm.switchChain("0x1a50");
+}
+```
+
+Do not switch networks automatically when the page loads. Let the user connect first.
+
+## Read a balance
+
+The examples use `viem` for read-only balance access:
+
+```ts
+const publicClient = createPublicClient({
   transport: http("https://api.windcrypto.com/rpc"),
 });
 
-const balance = await client.getBalance({ address });
+const balance = await publicClient.getBalance({ address });
 ```
 
-Sending remains a visible EIP-1193 call:
+## Send a transaction
 
 ```ts
-const hash = await provider.request({
+const hash = await evm.request<string>({
   method: "eth_sendTransaction",
-  params: [{ from, to, value: toHex(parseEther(amount)) }],
+  params: [
+    {
+      from: address,
+      to: recipient,
+      value: toHex(parseEther("0.001")),
+    },
+  ],
 });
 ```
 
-Validate `to` with `isAddress`, require a positive value, ensure chain `0x1a50`, and validate the returned transaction hash.
+Validate the recipient, amount, active chain, and returned transaction hash before showing success.
 
-## Disconnect behavior
+## WalletConnect v2
 
-WalletConnect has a real session disconnect method. A normal injected EIP-1193 provider does not have one standard permission-revocation method. The example's injected Disconnect button removes listeners and clears local dApp state; the wallet remains responsible for stored permissions.
+For a browser without Wisp's injected EVM provider, create a WalletConnect v2 provider and pass it to the same WindStack client:
+
+```ts
+const evm = await createEVMClient({ provider: walletConnectProvider });
+const accounts = await evm.connect();
+```
+
+`VITE_WALLETCONNECT_PROJECT_ID` is required for that path.
+
+See `react-vite/src/lib/wispEvm.ts` or `vue-vite/src/lib/wispEvm.ts` for the complete example.

@@ -1,34 +1,56 @@
-# Wisp Android DApp Browser
+# Wisp Android
 
-Open the HTTPS dApp URL in Wisp Wallet's DApp Browser to use both injected transports directly.
+Open the dApp in Wisp Wallet's DApp Browser to use Wisp directly for both VEX Native and VEX EVM.
 
 ## VEX Native
 
-Wisp injects VexaniumProvider v1 and announces its provider identity as `com.wisp.wallet`. Use the WindStack client with that preferred RDNS:
+Create the WindStack client with Wisp's RDNS:
 
 ```ts
-const client = await createVexaniumClient({
+const vex = await createVexaniumClient({
   providerRdns: "com.wisp.wallet",
-  autoSync: true,
-  dapp: { name, description, url: window.location.href },
+  rpcUrl: "https://api.windcrypto.com",
+  dapp: {
+    name: "My dApp",
+    url: window.location.href,
+  },
 });
 ```
 
-Connect to `vexNative.chainId`. Do not use ScatterJS and do not translate Native actions into EVM RPC methods.
+Connect only after the user presses Connect:
+
+```ts
+const account = await vex.connectOne();
+```
+
+After a successful connection, save `vex.getSession()?.walletSessionId`. On a later page load, use `restoreVexaniumSession()` before offering a new connection.
+
+Transactions can be sent directly with `vex.transact()`.
 
 ## VEX EVM
 
-Wisp exposes a standard EIP-1193 provider and announces it through EIP-6963 with the same RDNS. Use `eth_requestAccounts`, `eth_accounts`, `eth_chainId`, `wallet_switchEthereumChain`, `wallet_addEthereumChain`, and `eth_sendTransaction`.
+Wisp exposes a standard EVM provider. Find it with EIP-6963 and create a WindStack EVM client:
 
-The injected path does not need a WalletConnect project ID.
+```ts
+const providers = await discoverEVMProviders();
+const wisp = providers.find(({ info }) => info.rdns === "com.wisp.wallet");
 
-## WebView lifecycle
+if (!wisp) throw new Error("Wisp Wallet was not found");
 
-- Register provider listeners once when the app mounts.
-- Remove listeners when it unmounts.
-- React to account, chain, and disconnect events instead of keeping stale state.
-- Disable action buttons while one wallet request is pending.
-- Do not send on page load or reconnect.
-- Preserve form state if Android backgrounds and restores the page.
+const evm = await createEVMClient({ provider: wisp.provider });
+const accounts = await evm.connect();
+```
 
-If the page is opened in the Telegram browser instead, use the portable handoff described in [telegram.md](telegram.md); the Telegram browser is not expected to expose Wisp's injected objects.
+The Wisp Android path does not require a WalletConnect project ID.
+
+## Page lifecycle
+
+- Check an existing Native session before showing Connect.
+- Connect only from a user action.
+- Register account, chain, and disconnect listeners once.
+- Remove listeners when the page is disposed.
+- Keep transaction forms intact when the app is backgrounded.
+- Disable transaction buttons while another wallet request is pending.
+- Never send a transaction automatically when the page opens.
+
+If the dApp is opened in a normal HTTPS browser instead, VEX Native can use the [Wisp Telegram](telegram.md) transport and VEX EVM can use WalletConnect v2.

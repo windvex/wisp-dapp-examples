@@ -1,14 +1,13 @@
 import {
-  createPublicClient,
-  formatEther,
-  http,
-  isAddress,
-  isHash,
-  parseEther,
-  toHex,
-  type Address,
-  type Hash,
-} from "viem";
+  createEVMClient,
+  discoverEVMProviders,
+  getInjectedEVMProvider,
+  normalizeEvmAddress,
+  normalizeEvmTransactionHash,
+  type EIP1193Provider,
+  type EVMClient,
+} from "@windstack/evm";
+import { createPublicClient, formatEther, http, parseEther, toHex } from "viem";
 
 import {
   VEX_EVM_CHAIN_ID_HEX,
@@ -16,37 +15,25 @@ import {
   VEX_EVM_RPC,
 } from "../config";
 
-export type Eip1193Request = {
-  method: string;
-  params?: readonly unknown[] | Record<string, unknown>;
-};
-
-export type Eip1193Provider = {
-  isWispWallet?: boolean;
-  isWisp?: boolean;
-  request<T = unknown>(args: Eip1193Request): Promise<T>;
-  on?(event: string, listener: (...args: unknown[]) => void): void;
-  removeListener?(event: string, listener: (...args: unknown[]) => void): void;
-};
-
-export type EvmConnectionMethod = "Wisp EIP-1193" | "WalletConnect v2";
+export type EvmConnectionMethod = "Wisp Wallet" | "WalletConnect v2";
 
 export type EvmConnection = {
-  address: Address;
+  address: `0x${string}`;
   chainId: string;
   method: EvmConnectionMethod;
 };
 
-type Eip6963Detail = {
-  info: { rdns: string; name: string; uuid: string };
-  provider: Eip1193Provider;
-};
-
 type EvmListener = (connection: EvmConnection | null, reason: string) => void;
+
+type WispMarkedProvider = EIP1193Provider & {
+  isWispWallet?: boolean;
+  isWisp?: boolean;
+};
 
 const publicClient = createPublicClient({ transport: http(VEX_EVM_RPC) });
 const listeners = new Set<EvmListener>();
-let provider: Eip1193Provider | null = null;
+
+let client: EVMClient | null = null;
 let activeConnection: EvmConnection | null = null;
 let cleanupProviderEvents: (() => void) | null = null;
 
@@ -58,49 +45,46 @@ function errorCode(error: unknown) {
   return Number((error as { code?: unknown } | null)?.code);
 }
 
-function toAddress(value: unknown) {
-  const address = String(value || "");
-  if (!isAddress(address)) throw new Error("Wallet returned an invalid EVM address.");
-  return address;
+function toAddress(value: unknown): `0x${string}` {
+  try {
+    return normalizeEvmAddress(String(value || ""));
+  } catch {
+    throw new Error("Wallet returned an invalid EVM address.");
+  }
 }
 
-async function discoverInjectedWisp() {
-  const found = new Map<string, Eip6963Detail>();
-  const announce = (event: Event) => {
-    const detail = (event as CustomEvent<Eip6963Detail>).detail;
-    if (detail?.info?.rdns === "com.wisp.wallet" && detail.provider) {
-      found.set(detail.info.uuid, detail);
-    }
-  };
-
-  window.addEventListener("eip6963:announceProvider", announce);
-  window.dispatchEvent(new Event("eip6963:requestProvider"));
-  await new Promise((resolve) => window.setTimeout(resolve, 350));
-  window.removeEventListener("eip6963:announceProvider", announce);
-
-  const matches = [...found.values()];
+async function discoverWispProvider() {
+  const providers = await discoverEVMProviders(350);
+  const matches = providers.filter(({ info }) => info.rdns === "com.wisp.wallet");
   if (matches.length > 1) {
-    throw new Error("Multiple Wisp EIP-1193 providers were announced. Choose one explicitly in your production UI.");
+    throw new Error("More than one Wisp provider was found. Choose the wallet explicitly in your app.");
   }
   if (matches[0]) return matches[0].provider;
 
-  const injected = (window as Window & { ethereum?: Eip1193Provider }).ethereum;
+  const injected = getInjectedEVMProvider() as WispMarkedProvider | null;
   if (injected?.request && (injected.isWispWallet || injected.isWisp)) return injected;
-  throw new Error("Wisp EIP-1193 provider was not found. Open this page in the Wisp Android DApp Browser or use WalletConnect v2.");
+
+  throw new Error(
+    "Wisp EVM was not found. Open this page in Wisp Wallet or use WalletConnect v2.",
+  );
 }
 
-function bindProviderEvents(nextProvider: Eip1193Provider, method: EvmConnectionMethod) {
+function bindProviderEvents(nextClient: EVMClient, method: EvmConnectionMethod) {
   cleanupProviderEvents?.();
 
-  const accountsChanged = (...args: unknown[]) => {
-    const accounts = Array.isArray(args[0]) ? args[0] : [];
+  const accountsChanged = (accounts: string[]) => {
     const first = accounts[0];
-    if (!first) activeConnection = null;
-    else if (activeConnection) activeConnection = { ...activeConnection, address: toAddress(first), method };
+    activeConnection = first
+      ? {
+          address: toAddress(first),
+          chainId: activeConnection?.chainId || "",
+          method,
+        }
+      : null;
     emit("accountsChanged");
   };
-  const chainChanged = (...args: unknown[]) => {
-    if (activeConnection) activeConnection = { ...activeConnection, chainId: String(args[0] || ""), method };
+  const chainChanged = (chainId: string) => {
+    if (activeConnection) activeConnection = { ...activeConnection, chainId, method };
     emit("chainChanged");
   };
   const disconnected = () => {
@@ -108,66 +92,75 @@ function bindProviderEvents(nextProvider: Eip1193Provider, method: EvmConnection
     emit("disconnect");
   };
 
-  nextProvider.on?.("accountsChanged", accountsChanged);
-  nextProvider.on?.("chainChanged", chainChanged);
-  nextProvider.on?.("disconnect", disconnected);
+  nextClient.on("accountsChanged", accountsChanged);
+  nextClient.on("chainChanged", chainChanged);
+  nextClient.on("disconnect", disconnected);
+
   cleanupProviderEvents = () => {
-    nextProvider.removeListener?.("accountsChanged", accountsChanged);
-    nextProvider.removeListener?.("chainChanged", chainChanged);
-    nextProvider.removeListener?.("disconnect", disconnected);
+    nextClient.off("accountsChanged", accountsChanged);
+    nextClient.off("chainChanged", chainChanged);
+    nextClient.off("disconnect", disconnected);
   };
 }
 
 export function subscribeEvm(listener: EvmListener) {
   listeners.add(listener);
   listener(activeConnection, "current");
-  return () => {
-    listeners.delete(listener);
-  };
+  return () => listeners.delete(listener);
 }
 
 export async function connectEvm(
-  explicitProvider?: Eip1193Provider,
-  method: EvmConnectionMethod = "Wisp EIP-1193",
+  explicitProvider?: EIP1193Provider,
+  method: EvmConnectionMethod = "Wisp Wallet",
 ) {
-  provider = explicitProvider || (await discoverInjectedWisp());
-  const accounts = await provider.request<unknown[]>({ method: "eth_requestAccounts" });
-  if (!Array.isArray(accounts) || !accounts[0]) throw new Error("Wallet returned no EVM account.");
-  const chainId = await provider.request<string>({ method: "eth_chainId" });
-  activeConnection = { address: toAddress(accounts[0]), chainId: String(chainId), method };
-  bindProviderEvents(provider, method);
+  const provider = explicitProvider || (await discoverWispProvider());
+  const nextClient = await createEVMClient({ provider });
+  const accounts = await nextClient.connect();
+  const first = accounts[0];
+  if (!first) throw new Error("Wallet returned no EVM account.");
+
+  const chainId = await nextClient.getChainId();
+  client = nextClient;
+  activeConnection = { address: toAddress(first), chainId, method };
+  bindProviderEvents(nextClient, method);
   emit("connect");
   return activeConnection;
 }
 
+function requireClient() {
+  if (!client || !activeConnection) throw new Error("Connect Wisp EVM first.");
+  return client;
+}
+
 export async function ensureVexEvmNetwork() {
-  if (!provider) throw new Error("Connect Wisp EVM first.");
-  const currentChain = await provider.request<string>({ method: "eth_chainId" });
-  if (String(currentChain).toLowerCase() === VEX_EVM_CHAIN_ID_HEX) return VEX_EVM_CHAIN_ID_HEX;
+  const currentClient = requireClient();
+  const currentChain = await currentClient.getChainId();
+  if (currentChain.toLowerCase() === VEX_EVM_CHAIN_ID_HEX) return VEX_EVM_CHAIN_ID_HEX;
 
   try {
-    await provider.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: VEX_EVM_CHAIN_ID_HEX }],
-    });
+    await currentClient.switchChain(VEX_EVM_CHAIN_ID_HEX);
   } catch (error) {
     if (errorCode(error) !== 4902) throw error;
-    await provider.request({
-      method: "wallet_addEthereumChain",
-      params: [VEX_EVM_NETWORK],
+    await currentClient.addChain({
+      chainId: VEX_EVM_NETWORK.chainId,
+      chainName: VEX_EVM_NETWORK.chainName,
+      nativeCurrency: { ...VEX_EVM_NETWORK.nativeCurrency },
+      rpcUrls: [...VEX_EVM_NETWORK.rpcUrls],
+      blockExplorerUrls: [...VEX_EVM_NETWORK.blockExplorerUrls],
     });
-    await provider.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: VEX_EVM_CHAIN_ID_HEX }],
-    });
+    await currentClient.switchChain(VEX_EVM_CHAIN_ID_HEX);
+  }
+
+  if (activeConnection) {
+    activeConnection = { ...activeConnection, chainId: VEX_EVM_CHAIN_ID_HEX };
+    emit("chainChanged");
   }
   return VEX_EVM_CHAIN_ID_HEX;
 }
 
 export async function getEvmAddress() {
-  if (!provider) throw new Error("Connect Wisp EVM first.");
-  const accounts = await provider.request<unknown[]>({ method: "eth_accounts" });
-  if (!Array.isArray(accounts) || !accounts[0]) throw new Error("No EVM account is connected.");
+  const accounts = await requireClient().getAccounts();
+  if (!accounts[0]) throw new Error("No EVM account is connected.");
   return toAddress(accounts[0]);
 }
 
@@ -178,8 +171,9 @@ export async function getEvmBalance(addressInput?: string) {
 }
 
 export async function sendEvmTransaction(input: { recipient: string; amount: string }) {
-  if (!provider || !activeConnection) throw new Error("Connect Wisp EVM first.");
+  const currentClient = requireClient();
   const recipient = toAddress(input.recipient.trim());
+
   let value: bigint;
   try {
     value = parseEther(input.amount.trim());
@@ -187,25 +181,25 @@ export async function sendEvmTransaction(input: { recipient: string; amount: str
     throw new Error("EVM amount must be a valid decimal with at most 18 decimals.");
   }
   if (value <= 0n) throw new Error("EVM amount must be greater than zero.");
+
   await ensureVexEvmNetwork();
-  const hash = await provider.request<Hash>({
+  const hash = await currentClient.request<string>({
     method: "eth_sendTransaction",
     params: [
       {
-        from: activeConnection.address,
+        from: activeConnection!.address,
         to: recipient,
         value: toHex(value),
       },
     ],
   });
-  if (!isHash(hash)) throw new Error("Wallet returned an invalid EVM transaction hash.");
-  return hash;
+  return normalizeEvmTransactionHash(hash);
 }
 
 export function disconnectEvm() {
   cleanupProviderEvents?.();
   cleanupProviderEvents = null;
-  provider = null;
+  client = null;
   activeConnection = null;
   emit("disconnect");
 }

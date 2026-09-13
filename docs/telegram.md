@@ -1,77 +1,138 @@
-# Wisp Telegram native handoff
+# Wisp Telegram
 
-A website opened inside the Telegram browser is not the Wisp Android DApp Browser. Do not assume it has `window.vexanium`.
+Use the Wisp Telegram transport when a VEX Native dApp runs on a normal HTTPS website and Wisp is not available directly in the page.
 
-For VEX Native, the current portable flow is:
+## Install
 
-```text
-HTTPS dApp
-  -> prepare one connect or signing handoff
-  -> open the returned Wisp Telegram launch URL
-  -> user approves or rejects in Wisp Telegram
-  -> wallet signs and broadcasts an approved VSR
-  -> dApp polls the same request ID and receives the result
+```bash
+npm install @windstack/vexanium@2.2.0 @windstack/wallet-plugin-wisp@2.2.0
 ```
 
-## Public endpoints
-
-Default base URL:
-
-```text
-https://api.windcrypto.com/wisp/v1
-```
-
-- `POST /telegram/dapp/prepare`
-- `GET /telegram/dapp/status?id=<handoff-id>`
-
-These dApp endpoints do not need a private server secret. The dApp sends public metadata, the canonical chain ID, and either an empty connect request or an encoded VSR.
-
-## Connect request
-
-Prepare with:
+## Create the transport
 
 ```ts
-{
-  kind: "connect",
-  request: "",
-  chainId: vexNative.chainId,
-  name: "My dApp",
-  description: "My first VEX dApp",
-  origin: window.location.origin,
-  url: window.location.href
+import { createWispTelegramTransport } from "@windstack/wallet-plugin-wisp";
+
+const wisp = createWispTelegramTransport({
+  apiUrl: "https://api.windcrypto.com/wisp/v1",
+  dapp: {
+    name: "My dApp",
+    origin: window.location.origin,
+    url: window.location.href,
+  },
+});
+```
+
+The page must use HTTPS.
+
+If your dApp is itself a Telegram Mini App, you can also provide a return link:
+
+```ts
+const wisp = createWispTelegramTransport({
+  apiUrl: "https://api.windcrypto.com/wisp/v1",
+  telegramReturnUrl: "https://t.me/your_bot/your_app",
+  dapp: {
+    name: "My dApp",
+    origin: window.location.origin,
+    url: window.location.href,
+  },
+});
+```
+
+## Restore first
+
+Check for an existing wallet session when the page starts:
+
+```ts
+const restored = await wisp.restore();
+
+if (restored) {
+  console.log(restored.account.permissionLevel);
 }
 ```
 
-After approval, validate the returned actor and permission. The example stores only that public account identity with a short expiry; it stores no signing key.
+A saved local session value is not treated as connected until Wisp confirms it.
 
-## Signing request
+## Connect from a user action
 
-Build the same encoded VSR used for an injected provider, then prepare:
+If no session was restored, wait for the user to press Connect:
 
 ```ts
-{
-  kind: "sign",
-  request: encodedVsr,
-  chainId: vexNative.chainId,
-  expectedAccount: account.actor,
-  expectedPermission: account.permission,
-  name,
-  description,
-  origin,
-  url
+async function connectWallet() {
+  const session = await wisp.connect();
+  console.log(session.account.permissionLevel);
 }
 ```
 
-On completion, verify that the signer matches the expected permission and that `transactionId` is a 64-character hexadecimal ID.
+Do not call `connect()` automatically because `restore()` returned `null`.
 
-## Lifecycle rules
+## Send a Native transaction
 
-- Serve the dApp over HTTPS. The adapter rejects insecure origins.
-- Open only the `launchUrl` returned by the server. Do not invent bot parameters.
-- Create exactly one handoff for one user action.
-- Keep polling the same ID after returning to the dApp.
-- Android can pause network requests while Telegram is in front. A temporary fetch/5xx error is retried against the same ID, not replaced with a duplicate handoff.
-- Stop on approved, rejected, failed, aborted, or expired.
-- Never broadcast the same VSR from the dApp after Wisp Telegram has already broadcast it.
+Create a Vexanium client for transaction and ABI access:
 
-VEX EVM is separate: use WalletConnect v2, not the Native VSR endpoint and not a fake Native `eip155` namespace.
+```ts
+import { createVexaniumClient } from "@windstack/vexanium";
+
+const vex = await createVexaniumClient({
+  rpcUrl: "https://api.windcrypto.com",
+  dapp: {
+    name: "My dApp",
+    url: window.location.href,
+  },
+});
+```
+
+Then send structured actions through the connected Wisp Telegram session:
+
+```ts
+const account = (await wisp.getAccounts())[0];
+
+const result = await wisp.transact(vex, {
+  actions: [
+    {
+      account: "vex.token",
+      name: "transfer",
+      data: {
+        from: account.actor,
+        to: "receiver",
+        quantity: "1.0000 VEX",
+        memo: "Wisp Telegram example",
+      },
+    },
+  ],
+});
+
+console.log(result.transactionId);
+```
+
+The same call accepts multiple actions in one transaction.
+
+## Disconnect
+
+```ts
+await wisp.disconnect();
+```
+
+This clears the local connection and asks Wisp to revoke the wallet session.
+
+## dApp manifest
+
+A deployed dApp should expose:
+
+```text
+https://your-dapp.example/wisp-wallet-manifest.json
+```
+
+Example:
+
+```json
+{
+  "url": "https://your-dapp.example",
+  "name": "My dApp",
+  "iconUrl": "https://your-dapp.example/icon-180.png"
+}
+```
+
+Use the same HTTPS origin as the dApp. The file should be publicly readable without cookies, login, or Telegram credentials.
+
+The complete React and Vue examples use this transport from `src/lib/wispNative.ts`.
