@@ -237,8 +237,8 @@
     <section class="card">
       <div class="section-heading"><div><span class="step">03</span><h2>VEX EVM</h2></div><span class="status">{evm?.method || "Disconnected"}</span></div>
       <div class="button-grid">
-        <button type="button" disabled={Boolean(busy)} onclick={handleConnectInjectedEvm}>Connect Wisp EVM</button>
-        <button type="button" class="secondary" disabled={Boolean(busy) || !walletConnect.isConfigured()} onclick={handleConnectWalletConnect}>Connect WalletConnect v2</button>
+        <button type="button" disabled={Boolean(busy) || Boolean(evm)} onclick={handleConnectInjectedEvm}>Connect Wisp EVM</button>
+        <button type="button" class="secondary" disabled={Boolean(busy) || Boolean(evm) || !walletConnect.isConfigured()} onclick={handleConnectWalletConnect}>Connect WalletConnect v2</button>
         <button type="button" class="secondary" disabled={Boolean(busy) || !evm} onclick={handleEnsureNetwork}>Switch/Add VEX EVM Network</button>
         <button type="button" class="secondary" disabled={Boolean(busy) || !evm} onclick={handleEvmAddress}>Get Address</button>
         <button type="button" class="secondary" disabled={Boolean(busy) || !evm} onclick={handleEvmBalance}>Get Native VEX Balance</button>
