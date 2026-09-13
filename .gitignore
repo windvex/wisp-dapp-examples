@@ -1,7 +1,7 @@
 node_modules/
 dist/
-.next/
-out/
+.nuxt/
+.output/
 .env
 .env.local
 *.tsbuildinfo

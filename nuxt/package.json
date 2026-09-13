@@ -1,0 +1,28 @@
+{
+  "name": "wisp-dapp-example-nuxt",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "typecheck": "nuxt typecheck",
+    "check": "npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "@walletconnect/ethereum-provider": "2.23.10",
+    "@windstack/evm": "2.2.0",
+    "@windstack/vexanium": "2.2.0",
+    "@windstack/wallet-plugin-wisp": "2.2.0",
+    "nuxt": "4.5.2",
+    "viem": "2.55.19",
+    "vue": "3.5.42"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vue-tsc": "3.3.11"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
