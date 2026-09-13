@@ -2,7 +2,7 @@
 
 Starter projects for building Vexanium dApps with Wisp Wallet and WindStack 2.2.
 
-The React and Vue examples include the same wallet flows:
+The examples cover the same wallet flows:
 
 - connect Wisp Wallet on VEX Native
 - restore an existing VEX Native wallet session when the page opens
@@ -21,11 +21,12 @@ These examples use VEX mainnet. A transaction is only requested after the user s
 | Folder | Stack |
 | --- | --- |
 | `react-vite` | React 19, Vite, TypeScript |
+| `nextjs` | Next.js 16, React 19, App Router, TypeScript |
 | `vue-vite` | Vue 3, Vite, TypeScript |
 
 ## Quick start
 
-### React
+### React + Vite
 
 ```bash
 git clone https://github.com/windvex/wisp-dapp-examples.git
@@ -35,7 +36,17 @@ cp .env.example .env
 npm run dev
 ```
 
-### Vue
+### Next.js
+
+```bash
+git clone https://github.com/windvex/wisp-dapp-examples.git
+cd wisp-dapp-examples/nextjs
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+### Vue + Vite
 
 ```bash
 git clone https://github.com/windvex/wisp-dapp-examples.git
@@ -47,7 +58,7 @@ npm run dev
 
 Use Node.js 20.19 or newer.
 
-Run the local checks with:
+Run the local checks inside an example folder with:
 
 ```bash
 npm run check
@@ -61,11 +72,11 @@ The examples use the public WindStack packages directly:
 npm install @windstack/vexanium@2.2.0 @windstack/wallet-plugin-wisp@2.2.0 @windstack/evm@2.2.0
 ```
 
-VEX Native transaction construction, ABI loading, authorization, signing requests, and wallet signing are handled by WindStack. The example does not add another transaction serializer or wallet compatibility layer.
+VEX Native transaction construction, ABI loading, authorization, signing requests, and wallet signing are handled by WindStack. The examples do not add another transaction serializer or wallet compatibility layer.
 
 ## Configuration
 
-Copy `.env.example` to `.env`.
+React and Vue use Vite environment variables:
 
 ```dotenv
 VITE_VEX_NATIVE_RPC=https://api.windcrypto.com
@@ -75,9 +86,22 @@ VITE_WISP_TELEGRAM_RETURN_URL=
 VITE_WALLETCONNECT_PROJECT_ID=
 ```
 
-`VITE_WISP_TELEGRAM_RETURN_URL` is optional. Set it only when the dApp itself is a Telegram Mini App and should return to a specific `https://t.me/...` Mini App link after Wisp finishes a request.
+Next.js uses the same values with the `NEXT_PUBLIC_` prefix:
 
-`VITE_WALLETCONNECT_PROJECT_ID` is only needed for the external VEX EVM WalletConnect path.
+```dotenv
+NEXT_PUBLIC_VEX_NATIVE_RPC=https://api.windcrypto.com
+NEXT_PUBLIC_VEX_EVM_RPC=https://api.windcrypto.com/rpc
+NEXT_PUBLIC_WISP_API_URL=https://api.windcrypto.com/wisp/v1
+NEXT_PUBLIC_WISP_TELEGRAM_RETURN_URL=
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
+NEXT_PUBLIC_DAPP_URL=
+```
+
+The Telegram return URL is optional. Set it only when the dApp itself is a Telegram Mini App and should return to a specific `https://t.me/...` Mini App link after Wisp finishes a request.
+
+The WalletConnect project ID is only needed for the external VEX EVM WalletConnect path.
+
+For the Next.js example, set `NEXT_PUBLIC_DAPP_URL` to the deployed HTTPS origin when using the included Wisp manifest route.
 
 ## VEX Native
 
@@ -149,7 +173,7 @@ const restored = await restoreVexaniumSession(vex, {
 
 If the wallet says the session is expired or revoked, treat the dApp as disconnected. Do not automatically open a new connection request during page startup.
 
-The complete flow is in `src/lib/wispNative.ts` in both examples.
+The complete flow is in each example's `wispNative.ts` file.
 
 ## Wisp Telegram
 
@@ -203,7 +227,7 @@ The transport handles the Wisp request, persistent session, return flow, and res
 
 ## VEX EVM
 
-VEX EVM uses standard Ethereum wallet interfaces. The example uses `@windstack/evm` for provider discovery and wallet requests.
+VEX EVM uses standard Ethereum wallet interfaces. The examples use `@windstack/evm` for provider discovery and wallet requests.
 
 ```ts
 import { createEVMClient, discoverEVMProviders } from "@windstack/evm";
@@ -218,17 +242,17 @@ const accounts = await evm.connect();
 const chainId = await evm.getChainId();
 ```
 
-For external EVM wallets, the example creates a WalletConnect v2 provider and passes that provider to the same WindStack EVM client.
+For external EVM wallets, the examples create a WalletConnect v2 provider and pass that provider to the same WindStack EVM client.
 
 ## Project files
 
-Each framework example keeps the wallet code in a few small files:
+React and Vue keep their wallet modules under `src/lib`. The Next.js example keeps the same modules under `lib` and its UI under `app`.
 
-- `src/lib/wispNative.ts` — Native connect, restore, balance, disconnect, and transactions
-- `src/lib/wispEvm.ts` — Wisp EVM discovery, network switching, balance, and transactions
-- `src/lib/walletConnect.ts` — WalletConnect v2 for external EVM wallets
-- `src/config.ts` — Vexanium network and endpoint configuration
-- `src/App.*` — example UI and user actions
+- `wispNative.ts` — Native connect, restore, balance, disconnect, and transactions
+- `wispEvm.ts` — Wisp EVM discovery, network switching, balance, and transactions
+- `walletConnect.ts` — WalletConnect v2 for external EVM wallets
+- `config.ts` — Vexanium network and endpoint configuration
+- `App.*` or `app/page.tsx` — example UI and user actions
 
 ## Production dApp identity
 
@@ -249,6 +273,8 @@ Example:
 ```
 
 Use your real HTTPS origin and icon. The manifest should be publicly readable without cookies or authentication.
+
+The Next.js example includes a manifest route at `/wisp-wallet-manifest.json`.
 
 ## Guides
 
