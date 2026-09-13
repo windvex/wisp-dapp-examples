@@ -24,6 +24,7 @@ These examples use VEX mainnet. A transaction is only requested after the user s
 | `nextjs` | Next.js 16, React 19, App Router, TypeScript |
 | `vue-vite` | Vue 3, Vite, TypeScript |
 | `nuxt` | Nuxt 4, Vue 3, TypeScript |
+| `sveltekit` | SvelteKit 2, Svelte 5, TypeScript |
 
 ## Quick start
 
@@ -62,6 +63,16 @@ npm run dev
 ```bash
 git clone https://github.com/windvex/wisp-dapp-examples.git
 cd wisp-dapp-examples/nuxt
+npm install
+cp .env.example .env
+npm run dev
+```
+
+### SvelteKit
+
+```bash
+git clone https://github.com/windvex/wisp-dapp-examples.git
+cd wisp-dapp-examples/sveltekit
 npm install
 cp .env.example .env
 npm run dev
@@ -119,11 +130,22 @@ NUXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
 NUXT_PUBLIC_DAPP_URL=
 ```
 
+SvelteKit uses public environment variables:
+
+```dotenv
+PUBLIC_VEX_NATIVE_RPC=https://api.windcrypto.com
+PUBLIC_VEX_EVM_RPC=https://api.windcrypto.com/rpc
+PUBLIC_WISP_API_URL=https://api.windcrypto.com/wisp/v1
+PUBLIC_WISP_TELEGRAM_RETURN_URL=
+PUBLIC_WALLETCONNECT_PROJECT_ID=
+PUBLIC_DAPP_URL=
+```
+
 The Telegram return URL is optional. Set it only when the dApp itself is a Telegram Mini App and should return to a specific `https://t.me/...` Mini App link after Wisp finishes a request.
 
 The WalletConnect project ID is only needed for the external VEX EVM WalletConnect path.
 
-For the Next.js and Nuxt examples, set the framework-specific public dApp URL variable to the deployed HTTPS origin when using the included Wisp manifest route.
+For the Next.js, Nuxt, and SvelteKit examples, set the framework-specific public dApp URL variable to the deployed HTTPS origin when using the included Wisp manifest route.
 
 ## VEX Native
 
@@ -268,13 +290,13 @@ For external EVM wallets, the examples create a WalletConnect v2 provider and pa
 
 ## Project files
 
-React and Vue keep their wallet modules under `src/lib`. Next.js keeps the same modules under `lib`, while Nuxt keeps them under `app/lib` so wallet code stays inside the Nuxt application boundary.
+React and Vue keep their wallet modules under `src/lib`. Next.js keeps the same modules under `lib`, Nuxt keeps them under `app/lib`, and SvelteKit keeps them under `src/lib`.
 
 - `wispNative.ts` — Native connect, restore, balance, disconnect, and transactions
 - `wispEvm.ts` — Wisp EVM discovery, network switching, balance, and transactions
 - `walletConnect.ts` — WalletConnect v2 for external EVM wallets
 - `config.ts` — Vexanium network and endpoint configuration
-- `App.*`, `app/page.tsx`, or `app/app.vue` — example UI and user actions
+- framework page or app files — example UI and user actions
 
 ## Production dApp identity
 
@@ -296,7 +318,7 @@ Example:
 
 Use your real HTTPS origin and icon. The manifest should be publicly readable without cookies or authentication.
 
-The Next.js and Nuxt examples include a manifest route at `/wisp-wallet-manifest.json`.
+The Next.js, Nuxt, and SvelteKit examples include a manifest route at `/wisp-wallet-manifest.json`.
 
 ## Guides
 
