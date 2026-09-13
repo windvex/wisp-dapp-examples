@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Vanilla TypeScript example for Wisp Wallet and WindStack on Vexanium." />
+    <title>Wisp dApp Example · Vanilla TypeScript</title>
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="hero">
+        <span class="eyebrow">Vanilla TypeScript + Vite</span>
+        <h1>Wisp dApp Example</h1>
+        <p>Connect Wisp Wallet, restore a VEX Native session, read balances, and request VEX Native or VEX EVM transactions without a UI framework.</p>
+      </header>
+
+      <div id="error" class="notice error" role="alert" hidden></div>
+      <div id="busy" class="notice pending" role="status" hidden></div>
+
+      <section class="card full">
+        <div class="section-heading">
+          <div><span class="step">01</span><h2>Environment</h2></div>
+          <span class="status" id="runtime-value">Detecting…</span>
+        </div>
+        <dl class="info-grid">
+          <div class="info-row"><dt>Runtime</dt><dd id="runtime-value-copy">See status above</dd></div>
+          <div class="info-row"><dt>Secure context</dt><dd id="secure-value">—</dd></div>
+          <div class="info-row"><dt>Wisp Native</dt><dd id="native-provider-value">—</dd></div>
+          <div class="info-row"><dt>Wisp EVM</dt><dd id="evm-provider-value">—</dd></div>
+          <div class="info-row"><dt>Native RPC</dt><dd id="native-rpc-value">—</dd></div>
+          <div class="info-row"><dt>EVM RPC</dt><dd id="evm-rpc-value">—</dd></div>
+          <div class="info-row"><dt>Wisp API</dt><dd id="wisp-api-value">—</dd></div>
+        </dl>
+      </section>
+
+      <div class="columns">
+        <section class="card">
+          <div class="section-heading">
+            <div><span class="step">02</span><h2>VEX Native</h2></div>
+            <span class="status" id="native-method-value">Restoring…</span>
+          </div>
+
+          <div class="button-grid">
+            <button id="connect-native" type="button">Connect Wisp Native</button>
+            <button id="get-native-account" class="secondary" type="button">Get Account</button>
+            <button id="get-native-balance" class="secondary" type="button">Get VEX Balance</button>
+            <button id="disconnect-native" class="ghost" type="button">Disconnect</button>
+          </div>
+
+          <p class="hint">The example checks an existing session on startup. A new wallet connection only starts after you press Connect.</p>
+
+          <dl class="compact-info">
+            <div class="info-row"><dt>Account</dt><dd id="native-account-value">—</dd></div>
+            <div class="info-row"><dt>Chain</dt><dd id="native-chain-value">—</dd></div>
+            <div class="info-row"><dt>Balance</dt><dd id="native-balance-value">—</dd></div>
+          </dl>
+
+          <form id="native-transfer-form" class="transaction-form">
+            <h3>Native transfer</h3>
+            <label>Recipient<input id="native-recipient" required placeholder="receiver" autocomplete="off" /></label>
+            <label>Amount (VEX)<input id="native-amount" required inputmode="decimal" value="0.0001" /></label>
+            <label>Memo<input id="native-memo" maxlength="256" value="Wisp example" /></label>
+            <button type="submit">Send Native Transaction</button>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <div><span class="step">03</span><h2>VEX EVM</h2></div>
+            <span class="status" id="evm-method-value">Disconnected</span>
+          </div>
+
+          <div class="button-grid">
+            <button id="connect-wisp-evm" type="button">Connect Wisp EVM</button>
+            <button id="connect-walletconnect" class="secondary" type="button">Connect WalletConnect v2</button>
+            <button id="ensure-network" class="secondary" type="button">Switch/Add VEX EVM Network</button>
+            <button id="get-evm-address" class="secondary" type="button">Get Address</button>
+            <button id="get-evm-balance" class="secondary" type="button">Get Native VEX Balance</button>
+            <button id="disconnect-evm" class="ghost" type="button">Disconnect</button>
+          </div>
+
+          <dl class="compact-info">
+            <div class="info-row"><dt>Address</dt><dd id="evm-address-value">—</dd></div>
+            <div class="info-row"><dt>Chain</dt><dd id="evm-chain-value">—</dd></div>
+            <div class="info-row"><dt>Balance</dt><dd id="evm-balance-value">—</dd></div>
+          </dl>
+
+          <form id="evm-transfer-form" class="transaction-form">
+            <h3>EVM transfer</h3>
+            <label>Recipient<input id="evm-recipient" required placeholder="0x..." autocomplete="off" /></label>
+            <label>Amount (VEX)<input id="evm-amount" required inputmode="decimal" value="0.000001" /></label>
+            <button type="submit">Send EVM Transaction</button>
+          </form>
+        </section>
+      </div>
+
+      <section class="card full result-card">
+        <div class="section-heading"><div><span class="step">04</span><h2>Latest Result</h2></div></div>
+        <pre id="result">Connect a wallet or send a transaction to see the result.</pre>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
