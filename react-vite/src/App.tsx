@@ -266,8 +266,8 @@ export default function App() {
             <span className="status">{evm?.method || "Disconnected"}</span>
           </div>
           <div className="button-grid">
-            <button onClick={handleConnectInjectedEvm} disabled={Boolean(busy)}>Connect Wisp EVM</button>
-            <button className="secondary" onClick={handleConnectWalletConnect} disabled={Boolean(busy) || !isWalletConnectConfigured()}>Connect WalletConnect v2</button>
+            <button onClick={handleConnectInjectedEvm} disabled={Boolean(busy) || Boolean(evm)}>Connect Wisp EVM</button>
+            <button className="secondary" onClick={handleConnectWalletConnect} disabled={Boolean(busy) || Boolean(evm) || !isWalletConnectConfigured()}>Connect WalletConnect v2</button>
             <button className="secondary" onClick={handleEnsureNetwork} disabled={Boolean(busy) || !evm}>Switch/Add VEX EVM Network</button>
             <button className="secondary" onClick={handleEvmAddress} disabled={Boolean(busy) || !evm}>Get Address</button>
             <button className="secondary" onClick={handleEvmBalance} disabled={Boolean(busy) || !evm}>Get Native VEX Balance</button>
