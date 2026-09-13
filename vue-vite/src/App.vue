@@ -236,8 +236,8 @@ function renderedResult() {
       <section class="card">
         <div class="section-heading"><div><span class="step">03</span><h2>VEX EVM</h2></div><span class="status">{{ evm?.method || "Disconnected" }}</span></div>
         <div class="button-grid">
-          <button :disabled="Boolean(busy)" @click="handleConnectInjectedEvm">Connect Wisp EVM</button>
-          <button class="secondary" :disabled="Boolean(busy) || !isWalletConnectConfigured()" @click="handleConnectWalletConnect">Connect WalletConnect v2</button>
+          <button :disabled="Boolean(busy) || Boolean(evm)" @click="handleConnectInjectedEvm">Connect Wisp EVM</button>
+          <button class="secondary" :disabled="Boolean(busy) || Boolean(evm) || !isWalletConnectConfigured()" @click="handleConnectWalletConnect">Connect WalletConnect v2</button>
           <button class="secondary" :disabled="Boolean(busy) || !evm" @click="handleEnsureNetwork">Switch/Add VEX EVM Network</button>
           <button class="secondary" :disabled="Boolean(busy) || !evm" @click="handleEvmAddress">Get Address</button>
           <button class="secondary" :disabled="Boolean(busy) || !evm" @click="handleEvmBalance">Get Native VEX Balance</button>
