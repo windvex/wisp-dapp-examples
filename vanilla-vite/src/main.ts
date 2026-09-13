@@ -45,6 +45,7 @@ const busyBox = node<HTMLDivElement>("#busy");
 const resultBox = node<HTMLPreElement>("#result");
 
 const runtimeValue = node<HTMLElement>("#runtime-value");
+const runtimeValueCopy = node<HTMLElement>("#runtime-value-copy");
 const secureValue = node<HTMLElement>("#secure-value");
 const nativeProviderValue = node<HTMLElement>("#native-provider-value");
 const evmProviderValue = node<HTMLElement>("#evm-provider-value");
@@ -88,11 +89,13 @@ let evmBalance = "";
 let busy = false;
 let restoringNative = true;
 
-function stringify(value: unknown) {
-  return JSON.stringify(
-    value,
-    (_key, item: unknown) => (typeof item === "bigint" ? item.toString() : item),
-    2,
+function stringify(value: unknown): string {
+  return (
+    JSON.stringify(
+      value,
+      (_key, item: unknown) => (typeof item === "bigint" ? item.toString() : item),
+      2,
+    ) ?? String(value)
   );
 }
 
@@ -175,6 +178,7 @@ async function run<T>(label: string, operation: () => Promise<T>) {
 
 const environment = detectEnvironment();
 runtimeValue.textContent = environment.runtime;
+runtimeValueCopy.textContent = environment.runtime;
 secureValue.textContent = environment.isSecureContext ? "Yes" : "No — Wisp Telegram requires HTTPS";
 nativeProviderValue.textContent = environment.hasInjectedNative ? "Available" : "Not detected";
 evmProviderValue.textContent = environment.hasInjectedEvm ? "Available" : "Not detected";
