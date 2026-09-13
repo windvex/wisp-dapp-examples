@@ -305,7 +305,7 @@ export function formatNativeAmount(value: string) {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/u.test(normalized)) {
     throw new Error("Native amount must be positive with at most 4 decimals.");
   }
-  const [whole, fraction = ""] = normalized.split(".");
+  const [whole = "0", fraction = ""] = normalized.split(".");
   const units = BigInt(whole) * 10_000n + BigInt(fraction.padEnd(4, "0"));
   if (units <= 0n) throw new Error("Native amount must be greater than zero.");
   return `${whole}.${fraction.padEnd(4, "0")} VEX`;
