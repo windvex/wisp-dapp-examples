@@ -8,7 +8,6 @@ import {
 } from "@windstack/wallet-plugin-wisp";
 
 import {
-  APP_NAME,import {
   APP_NAME,
   VEX_NATIVE_RPC,
   WISP_API_URL,
@@ -34,7 +33,7 @@ type NativeListener = (connection: NativeConnection | null, reason: string) => v
 let connector: WispConnector | null = null;
 let telegramTransport: WispTelegramTransport | null = null;
 
-function getTelegramTransport()function getTelegramTransport() {
+function getTelegramTransport() {
   if (telegramTransport) return telegramTransport;
   if (window.location.protocol !== "https:") return null;
 
@@ -122,7 +121,7 @@ export async function getNativeAccount() {
   return account;
 }
 
-function validateName(function validateName(value: string, label: string) {
+function validateName(value: string, label: string) {
   const normalized = value.trim();
   if (!/^[a-z1-5.]{1,12}$/u.test(normalized)) {
     throw new Error(`${label} must be a valid VEX Native account name.`);

@@ -7,7 +7,7 @@ import {
   type WispTelegramTransport,
 } from "@windstack/wallet-plugin-wisp";
 
-import { APP_NAME, type AppConfig } from "./config";import { APP_NAME, type AppConfig } from "./config";
+import { APP_NAME, type AppConfig } from "./config";
 
 export type NativeConnectionMethod = "Wisp Wallet" | "Wisp Telegram";
 
@@ -176,7 +176,7 @@ export function createNativeWallet(config: AppConfig) {
     sendTransfer,
   };
 }
-function validateName(function validateName(value: string, label: string) {
+function validateName(value: string, label: string) {
   const normalized = value.trim();
   if (!/^[a-z1-5.]{1,12}$/u.test(normalized)) {
     throw new Error(`${label} must be a valid VEX Native account name.`);
