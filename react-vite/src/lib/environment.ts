@@ -1,3 +1,5 @@
+import { WISP_PROVIDER_RDNS } from "@windstack/wallet-plugin-wisp";
+
 export type RuntimeEnvironment = {
   runtime: "Wisp Android DApp Browser" | "Telegram" | "Android browser" | "Desktop browser";
   isAndroid: boolean;
@@ -10,8 +12,7 @@ export type RuntimeEnvironment = {
 type RuntimeWindow = Window & {
   Telegram?: { WebApp?: { initData?: string } };
   vexanium?: { providerInfo?: { rdns?: string; standard?: string } };
-  ethereum?: { isWispWallet?: boolean; isWisp?: boolean };
-  __WISP_WALLET_INJECTED__?: boolean;
+  ethereum?: { request?: unknown };
 };
 
 export function detectEnvironment(): RuntimeEnvironment {
@@ -21,12 +22,9 @@ export function detectEnvironment(): RuntimeEnvironment {
   const isTelegram = Boolean(runtimeWindow.Telegram?.WebApp?.initData) || /Telegram/iu.test(userAgent);
   const hasInjectedNative =
     runtimeWindow.vexanium?.providerInfo?.standard === "VexaniumProvider" &&
-    runtimeWindow.vexanium.providerInfo.rdns === "com.wisp.wallet";
-  const hasInjectedEvm = Boolean(
-    runtimeWindow.ethereum?.isWispWallet ||
-      runtimeWindow.ethereum?.isWisp ||
-      runtimeWindow.__WISP_WALLET_INJECTED__,
-  );
+    runtimeWindow.vexanium.providerInfo.rdns === WISP_PROVIDER_RDNS;
+  const hasInjectedEvm =
+    hasInjectedNative && typeof runtimeWindow.ethereum?.request === "function";
 
   const runtime = hasInjectedNative || hasInjectedEvm
     ? "Wisp Android DApp Browser"
