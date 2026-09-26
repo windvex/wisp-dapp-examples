@@ -1,15 +1,13 @@
+import type { VexaniumAccount } from "@windstack/vexanium";
 import {
-  createVexaniumClient,
-  restoreVexaniumSession,
-  type VexaniumAccount,
-  type VexaniumClient,
-} from "@windstack/vexanium";
-import {
+  createWispConnector,
   createWispTelegramTransport,
+  type WispConnector,
+  type WispConnectorSnapshot,
   type WispTelegramTransport,
 } from "@windstack/wallet-plugin-wisp";
 
-import { APP_NAME, type AppConfig } from "./config";
+import { APP_NAME, type AppConfig } from "./config";import { APP_NAME, type AppConfig } from "./config";
 
 export type NativeConnectionMethod = "Wisp Wallet" | "Wisp Telegram";
 
@@ -27,78 +25,9 @@ export type NativeTransferInput = {
 
 type NativeListener = (connection: NativeConnection | null, reason: string) => void;
 
-const PROVIDER_SESSION_KEY = "wisp-dapp-example:native-session:v2";
-
 export function createNativeWallet(config: AppConfig) {
-  const listeners = new Set<NativeListener>();
-  let clientPromise: Promise<VexaniumClient> | null = null;
+  let connector: WispConnector | null = null;
   let telegramTransport: WispTelegramTransport | null = null;
-  let activeConnection: NativeConnection | null = null;
-  let restorePromise: Promise<NativeConnection | null> | null = null;
-
-  function emit(reason: string) {
-    for (const listener of listeners) listener(activeConnection, reason);
-  }
-
-  function message(error: unknown, fallback: string) {
-    return error instanceof Error && error.message ? error.message : fallback;
-  }
-
-  function storage() {
-    try {
-      return typeof window !== "undefined" ? window.localStorage : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function loadProviderSessionId() {
-    const value = storage()?.getItem(PROVIDER_SESSION_KEY)?.trim() || "";
-    if (!value || value.length > 512 || /[\u0000-\u001f\u007f]/u.test(value)) return "";
-    return value;
-  }
-
-  function saveProviderSessionId(value: string) {
-    if (value) storage()?.setItem(PROVIDER_SESSION_KEY, value);
-  }
-
-  function clearProviderSessionId() {
-    storage()?.removeItem(PROVIDER_SESSION_KEY);
-  }
-
-  async function getClient() {
-    if (!clientPromise) {
-      clientPromise = createVexaniumClient({
-        providerRdns: "com.wisp.wallet",
-        discoveryTimeoutMs: 1_200,
-        autoSync: true,
-        rpcUrl: config.nativeRpc,
-        dapp: {
-          name: APP_NAME,
-          description: "Wisp Wallet dApp example",
-          url: window.location.href,
-        },
-      }).then((client) => {
-        client.subscribeSession(({ accounts, reason }) => {
-          const session = client.getSession();
-          if (session?.walletSessionId) saveProviderSessionId(session.walletSessionId);
-          if (accounts[0]) {
-            activeConnection = {
-              account: accounts[0],
-              chainId: String(accounts[0].chainId),
-              method: "Wisp Wallet",
-            };
-          } else if (activeConnection?.method === "Wisp Wallet") {
-            activeConnection = null;
-            clearProviderSessionId();
-          }
-          emit(reason);
-        });
-        return client;
-      });
-    }
-    return clientPromise;
-  }
 
   function getTelegramTransport() {
     if (telegramTransport) return telegramTransport;
@@ -119,63 +48,49 @@ export function createNativeWallet(config: AppConfig) {
     return telegramTransport;
   }
 
-  function connectionFromAccount(
-    account: VexaniumAccount,
-    method: NativeConnectionMethod,
-  ): NativeConnection {
+  function getConnector() {
+    if (connector) return connector;
+    if (typeof window === "undefined") throw new Error("Wisp connector requires a browser runtime.");
+
+    const telegram = getTelegramTransport();
+    connector = createWispConnector({
+      appName: APP_NAME,
+      discoveryTimeoutMs: 1_200,
+      rpcUrl: config.nativeRpc,
+      dapp: {
+        name: APP_NAME,
+        description: "Wisp Wallet dApp example",
+        url: window.location.href,
+      },
+      ...(telegram ? { telegram } : {}),
+    });
+    return connector;
+  }
+
+  function connectionFromSnapshot(snapshot: WispConnectorSnapshot): NativeConnection | null {
+    if (snapshot.status !== "connected" || !snapshot.account) return null;
     return {
-      account,
-      chainId: String(account.chainId),
-      method,
+      account: snapshot.account,
+      chainId: String(snapshot.account.chainId),
+      method: snapshot.transport === "telegram" ? "Wisp Telegram" : "Wisp Wallet",
     };
   }
 
-  async function restoreNativeSession(): Promise<NativeConnection | null> {
-    const client = await getClient();
-
-    if (client.isAvailable()) {
-      const sessionId = loadProviderSessionId();
-      if (!sessionId) return null;
-      try {
-        const restored = await restoreVexaniumSession(client, {
-          sessionId,
-          chainId: config.nativeChainId,
-        });
-        const account = restored.accounts[0];
-        if (!account) return null;
-        activeConnection = connectionFromAccount(account, "Wisp Wallet");
-        emit("restore");
-        return activeConnection;
-      } catch {
-        clearProviderSessionId();
-        activeConnection = null;
-        emit("restore");
-        return null;
-      }
+  async function getAccount() {
+    const current = getConnector();
+    const snapshot = current.getSnapshot();
+    if (snapshot.status !== "connected" || !snapshot.account) {
+      throw new Error("Connect Wisp Native first.");
     }
 
-    const telegram = getTelegramTransport();
-    if (!telegram) return null;
-    const restored = await telegram.restore();
-    if (!restored) return null;
-    activeConnection = connectionFromAccount(restored.account, "Wisp Telegram");
-    emit("restore");
-    return activeConnection;
-  }
-
-  async function getAccount() {
-    if (!activeConnection) throw new Error("Connect Wisp Native first.");
-
-    if (activeConnection.method === "Wisp Telegram") {
+    if (snapshot.transport === "telegram") {
       const account = (await getTelegramTransport()?.getAccounts())?.[0];
       if (!account) throw new Error("No Wisp Telegram account is connected.");
-      activeConnection = connectionFromAccount(account, "Wisp Telegram");
       return account;
     }
 
-    const account = (await (await getClient()).getAccounts())[0];
+    const account = (await (await current.getProviderClient()).getAccounts())[0];
     if (!account) throw new Error("No Wisp Native account is connected.");
-    activeConnection = connectionFromAccount(account, "Wisp Wallet");
     return account;
   }
 
@@ -196,7 +111,11 @@ export function createNativeWallet(config: AppConfig) {
   }
 
   async function sendTransfer(input: NativeTransferInput) {
-    if (!activeConnection) throw new Error("Connect Wisp Native first.");
+    const current = getConnector();
+    const snapshot = current.getSnapshot();
+    if (snapshot.status !== "connected" || !snapshot.account) {
+      throw new Error("Connect Wisp Native first.");
+    }
 
     const recipient = validateName(input.recipient, "Recipient");
     const memo = input.memo.trim();
@@ -209,7 +128,7 @@ export function createNativeWallet(config: AppConfig) {
         account: "vex.token",
         name: "transfer",
         data: {
-          from: activeConnection.account.actor,
+          from: snapshot.account.actor,
           to: recipient,
           quantity: formatNativeAmount(input.amount),
           memo,
@@ -217,8 +136,8 @@ export function createNativeWallet(config: AppConfig) {
       },
     ];
 
-    const client = await getClient();
-    if (activeConnection.method === "Wisp Telegram") {
+    const client = await current.getProviderClient();
+    if (snapshot.transport === "telegram") {
       const telegram = getTelegramTransport();
       if (!telegram) throw new Error("Wisp Telegram is unavailable on this page.");
       return telegram.transact(client, { actions });
@@ -228,62 +147,28 @@ export function createNativeWallet(config: AppConfig) {
   }
 
   return {
-    restore() {
-      if (activeConnection) return Promise.resolve(activeConnection);
-      if (!restorePromise) {
-        restorePromise = restoreNativeSession().finally(() => {
-          restorePromise = null;
-        });
-      }
-      return restorePromise;
+    async restore(): Promise<NativeConnection | null> {
+      return connectionFromSnapshot(await getConnector().restore());
     },
 
     subscribe(listener: NativeListener) {
-      listeners.add(listener);
-      listener(activeConnection, "current");
-      return () => listeners.delete(listener);
+      const current = getConnector();
+      const notify = () => {
+        const snapshot = current.getSnapshot();
+        listener(connectionFromSnapshot(snapshot), snapshot.status);
+      };
+      notify();
+      return current.subscribe(notify);
     },
 
     async connect(): Promise<NativeConnection> {
-      if (activeConnection) return activeConnection;
-
-      const client = await getClient();
-      try {
-        if (client.isAvailable()) {
-          const account = await client.connectOne({ chainId: config.nativeChainId });
-          const sessionId = client.getSession()?.walletSessionId || "";
-          if (sessionId) saveProviderSessionId(sessionId);
-          activeConnection = connectionFromAccount(account, "Wisp Wallet");
-          emit("connect");
-          return activeConnection;
-        }
-
-        const telegram = getTelegramTransport();
-        if (!telegram) {
-          throw new Error("Open this page in Wisp Wallet or use an HTTPS page for Wisp Telegram.");
-        }
-        const session = await telegram.connect();
-        activeConnection = connectionFromAccount(session.account, "Wisp Telegram");
-        emit("connect");
-        return activeConnection;
-      } catch (error) {
-        throw new Error(message(error, "Wisp Wallet connection failed."));
-      }
+      const connection = connectionFromSnapshot(await getConnector().connect());
+      if (!connection) throw new Error("Wisp Wallet connection did not return an account.");
+      return connection;
     },
 
     async disconnect() {
-      if (!activeConnection) return;
-
-      if (activeConnection.method === "Wisp Telegram") {
-        await getTelegramTransport()?.disconnect();
-      } else {
-        const client = await getClient();
-        if (client.getSession()) await client.disconnect();
-        clearProviderSessionId();
-      }
-
-      activeConnection = null;
-      emit("disconnect");
+      await getConnector().disconnect();
     },
 
     getAccount,
@@ -291,8 +176,7 @@ export function createNativeWallet(config: AppConfig) {
     sendTransfer,
   };
 }
-
-function validateName(value: string, label: string) {
+function validateName(function validateName(value: string, label: string) {
   const normalized = value.trim();
   if (!/^[a-z1-5.]{1,12}$/u.test(normalized)) {
     throw new Error(`${label} must be a valid VEX Native account name.`);
