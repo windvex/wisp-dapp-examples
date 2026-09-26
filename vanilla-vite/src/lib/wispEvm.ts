@@ -1,12 +1,12 @@
 import {
   createEVMClient,
   discoverEVMProviders,
-  getInjectedEVMProvider,
   normalizeEvmAddress,
   normalizeEvmTransactionHash,
   type EIP1193Provider,
   type EVMClient,
 } from "@windstack/evm";
+import { WISP_PROVIDER_RDNS } from "@windstack/wallet-plugin-wisp";
 import { createPublicClient, formatEther, http, parseEther, toHex } from "viem";
 
 import {
@@ -24,11 +24,6 @@ export type EvmConnection = {
 };
 
 type EvmListener = (connection: EvmConnection | null, reason: string) => void;
-
-type WispMarkedProvider = EIP1193Provider & {
-  isWispWallet?: boolean;
-  isWisp?: boolean;
-};
 
 const publicClient = createPublicClient({ transport: http(VEX_EVM_RPC) });
 const listeners = new Set<EvmListener>();
@@ -55,16 +50,13 @@ function toAddress(value: unknown): `0x${string}` {
 
 async function discoverWispProvider() {
   const providers = await discoverEVMProviders(350);
-  const matches = providers.filter(({ info }) => info.rdns === "com.wisp.wallet");
+  const matches = providers.filter(({ info }) => info.rdns === WISP_PROVIDER_RDNS);
 
   if (matches.length > 1) {
     throw new Error("More than one Wisp provider was found. Choose the wallet explicitly in your app.");
   }
 
   if (matches[0]) return matches[0].provider;
-
-  const injected = getInjectedEVMProvider() as WispMarkedProvider | null;
-  if (injected?.request && (injected.isWispWallet || injected.isWisp)) return injected;
 
   throw new Error("Wisp EVM was not found. Open this page in Wisp Wallet or use WalletConnect v2.");
 }
