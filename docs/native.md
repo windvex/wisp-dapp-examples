@@ -1,145 +1,47 @@
 # VEX Native
 
-VEX Native dApps use `@windstack/vexanium` for wallet connection and transactions.
+VEX Native examples use `createWispConnector()` from `@windstack/wallet-plugin-wisp` for the Wisp connection lifecycle and `@windstack/vexanium` for chain operations.
 
-## Install
+## Candidate installation
+
+During the coordinated pre-release, authoritative validation injects the exact immutable WindStack 2.4.0 candidate tarballs. After publication, install the coordinated 2.4.0 packages from npm.
 
 ```bash
-npm install @windstack/vexanium@2.2.0 @windstack/wallet-plugin-wisp@2.2.0
+npm install @windstack/vexanium@2.4.0 @windstack/wallet-plugin-wisp@2.4.0
 ```
 
-## Create the client
+## Create the connector
 
 ```ts
-import { createVexaniumClient } from "@windstack/vexanium";
+import { createWispConnector, createWispTelegramTransport } from "@windstack/wallet-plugin-wisp";
 
-const vex = await createVexaniumClient({
-  providerRdns: "com.wisp.wallet",
+const telegram = window.location.protocol === "https:"
+  ? createWispTelegramTransport({
+      apiUrl: "https://api.windcrypto.com/wisp/v1",
+      dapp: {
+        name: "My dApp",
+        origin: window.location.origin,
+        url: window.location.href,
+      },
+    })
+  : undefined;
+
+const wisp = createWispConnector({
+  appName: "My dApp",
   rpcUrl: "https://api.windcrypto.com",
-  dapp: {
-    name: "My dApp",
-    url: window.location.href,
-  },
+  dapp: { name: "My dApp", url: window.location.href },
+  ...(telegram ? { telegram } : {}),
 });
 ```
 
-`providerRdns` selects Wisp when more than one compatible Native wallet is available.
+## Restore and connect
 
-## Connect
+Call `await wisp.restore()` during startup. If no session is restored, remain disconnected. Only call `await wisp.connect()` from an explicit user action.
 
-Connect only after the user presses a Connect button:
+The connector owns provider discovery, provider-session persistence, restore, disconnect, and Telegram fallback. Do not maintain a second session key in application code.
 
-```ts
-const account = await vex.connectOne();
-console.log(account.actor);
-console.log(account.permission);
-```
+## Transactions
 
-## Restore after reload
+For a connected provider route, obtain the Vexanium client with `await wisp.getProviderClient()` and send structured actions. For the Telegram route, the example reuses the same canonical Telegram transport for `transact()`; it does not reimplement the handoff protocol.
 
-Save the wallet session ID after a successful connection:
-
-```ts
-const sessionId = vex.getSession()?.walletSessionId;
-```
-
-On the next page load, restore that session before showing a new Connect request:
-
-```ts
-import { restoreVexaniumSession, vexNative } from "@windstack/vexanium";
-
-const restored = await restoreVexaniumSession(vex, {
-  sessionId,
-  chainId: vexNative.chainId,
-});
-```
-
-If restore fails because the session is no longer valid, clear the saved session ID and show the disconnected state. Do not call Connect automatically from page startup.
-
-## Read a balance
-
-A VEX balance can be read from the Native RPC:
-
-```ts
-const response = await fetch(
-  "https://api.windcrypto.com/v1/chain/get_currency_balance",
-  {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      code: "vex.token",
-      account: account.actor,
-      symbol: "VEX",
-    }),
-  },
-);
-
-const [balance = "0.0000 VEX"] = await response.json();
-```
-
-Check `response.ok` and validate the response before showing it. The example module includes those checks.
-
-## Send a transaction
-
-Use structured actions with `transact()`:
-
-```ts
-const result = await vex.transact({
-  actions: [
-    {
-      account: "vex.token",
-      name: "transfer",
-      data: {
-        from: account.actor,
-        to: "receiver",
-        quantity: "1.0000 VEX",
-        memo: "Example transfer",
-      },
-    },
-  ],
-});
-```
-
-When `authorization` is omitted, WindStack uses the connected wallet permission.
-
-## Multiple actions
-
-Put every action in one array:
-
-```ts
-await vex.transact({
-  actions: [firstAction, secondAction, thirdAction],
-});
-```
-
-The wallet receives one transaction containing all actions.
-
-## Call another contract
-
-Change the contract, action name, and data:
-
-```ts
-await vex.transact({
-  actions: [
-    {
-      account: "yourcontract",
-      name: "youraction",
-      data: {
-        owner: account.actor,
-        value: "example",
-      },
-    },
-  ],
-});
-```
-
-WindStack loads the contract ABI through the configured Vexanium RPC.
-
-## Input checks used by the example
-
-- VEX account names use `a-z`, `1-5`, and `.` with a maximum of 12 characters.
-- VEX amounts use 4 decimals.
-- Transfer amounts must be greater than zero.
-- The example limits the transfer memo to 256 UTF-8 bytes.
-
-See `react-vite/src/lib/wispNative.ts` or `vue-vite/src/lib/wispNative.ts` for the complete example.
+Input validation, balance display, transfer forms, and other DApp state remain application-owned.

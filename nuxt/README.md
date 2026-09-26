@@ -1,6 +1,6 @@
 # Nuxt Wisp dApp Example
 
-Nuxt 4 example for connecting Wisp Wallet with WindStack 2.2 on VEX Native and VEX EVM.
+Nuxt 4 example for connecting Wisp Wallet with the coordinated WindStack 2.4 release candidate on VEX Native and VEX EVM.
 
 ## Run locally
 
@@ -47,10 +47,9 @@ The Native adapter is in `app/lib/wispNative.ts`.
 
 It uses:
 
-- `createVexaniumClient()` for the injected Wisp provider
-- `restoreVexaniumSession()` for an existing wallet-issued session
-- `createWispTelegramTransport()` when the injected provider is not available on an HTTPS page
-- `client.transact()` for structured VEX Native actions
+- `createWispConnector()` for canonical provider discovery, restore, connect, disconnect, and Telegram fallback
+- `createWispTelegramTransport()` as the canonical Telegram transport used by the connector and Native transaction execution
+- `getProviderClient()` for structured VEX Native actions without duplicating wallet session orchestration
 
 Multiple actions belong in one `actions` array. WindStack keeps them in one transaction and one wallet signing flow.
 
@@ -58,7 +57,7 @@ Multiple actions belong in one `actions` array. WindStack keeps them in one tran
 
 The EVM adapter is in `app/lib/wispEvm.ts`.
 
-It uses `@windstack/evm` for EIP-6963 discovery, EIP-1193 requests, account events, chain switching, and network registration. The Wisp provider is selected by its RDNS: `com.wisp.wallet`.
+It uses `@windstack/evm` for EIP-6963 discovery, EIP-1193 requests, account events, chain switching, and network registration. The Wisp provider is selected with canonical `WISP_PROVIDER_RDNS` from `@windstack/wallet-plugin-wisp`.
 
 External EVM wallets can use WalletConnect v2 through `app/lib/walletConnect.ts`.
 

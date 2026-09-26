@@ -1,6 +1,6 @@
 # Wisp dApp Examples
 
-Starter projects for building Vexanium dApps with Wisp Wallet and WindStack 2.2.
+Starter projects for building Vexanium dApps with Wisp Wallet against the coordinated WindStack 2.4 release candidate.
 
 Each example demonstrates the same wallet flows:
 
@@ -41,6 +41,8 @@ npm run dev
 
 Use Node.js 20.19 or newer.
 
+The repository is currently in coordinated pre-release migration. Authoritative release validation injects the exact immutable WindStack 2.4.0 candidate tarballs; normal registry installation becomes authoritative only after that exact candidate is published.
+
 Run the checks inside any example folder with:
 
 ```bash
@@ -49,14 +51,15 @@ npm run check
 
 ## WindStack packages
 
-All examples use the public WindStack 2.2 packages directly:
+The examples are migrated to the WindStack 2.4 public API. During the coordinated pre-release, the private release gate installs the exact immutable candidate tarballs rather than resolving a rebuilt or intermediate npm release.
+
+After the coordinated 2.4.0 release is published, the public install is:
 
 ```bash
-npm install @windstack/vexanium@2.2.0 @windstack/wallet-plugin-wisp@2.2.0 @windstack/evm@2.2.0
+npm install @windstack/vexanium@2.4.0 @windstack/wallet-plugin-wisp@2.4.0 @windstack/evm@2.4.0
 ```
 
-VEX Native transaction construction, ABI loading, authorization, signing requests, and wallet signing are handled by WindStack. Application code passes structured actions directly to the SDK.
-
+VEX Native connection lifecycle is owned by `createWispConnector()`. VEX EVM remains standard EIP-1193/EIP-6963 through `@windstack/evm`, with Wisp identity imported from `WISP_PROVIDER_RDNS` instead of duplicated in application code.
 ## Configuration
 
 React, Vue, and Vanilla TypeScript use Vite variables:
@@ -108,130 +111,51 @@ The WalletConnect project ID is only required for the external VEX EVM WalletCon
 
 ## VEX Native
 
-Create one WindStack client for the page:
+Use the framework-neutral Wisp connector for provider discovery, session persistence, restore, connect, disconnect, and Telegram fallback:
 
 ```ts
-import { createVexaniumClient } from "@windstack/vexanium";
+import { createWispConnector, createWispTelegramTransport } from "@windstack/wallet-plugin-wisp";
 
-const vex = await createVexaniumClient({
-  providerRdns: "com.wisp.wallet",
+const telegram = window.location.protocol === "https:"
+  ? createWispTelegramTransport({
+      apiUrl: "https://api.windcrypto.com/wisp/v1",
+      dapp: {
+        name: "My dApp",
+        origin: window.location.origin,
+        url: window.location.href,
+      },
+    })
+  : undefined;
+
+const wisp = createWispConnector({
+  appName: "My dApp",
   rpcUrl: "https://api.windcrypto.com",
   dapp: {
     name: "My dApp",
     url: window.location.href,
   },
+  ...(telegram ? { telegram } : {}),
 });
 ```
 
-Connect from a user action:
+At startup call `await wisp.restore()`. Only call `await wisp.connect()` from an explicit user action. The application does not maintain a second provider-session ID or reimplement provider-vs-Telegram selection.
 
-```ts
-const account = await vex.connectOne();
-```
-
-Send structured actions:
-
-```ts
-const result = await vex.transact({
-  actions: [
-    {
-      account: "vex.token",
-      name: "transfer",
-      data: {
-        from: account.actor,
-        to: "receiver",
-        quantity: "1.0000 VEX",
-        memo: "Hello from my dApp",
-      },
-    },
-  ],
-});
-```
-
-For a multi-action transaction, keep every action in the same `actions` array:
-
-```ts
-await vex.transact({
-  actions: [firstAction, secondAction, thirdAction],
-});
-```
-
-WindStack keeps the actions in one transaction and sends one wallet request.
-
-## Restore a Native session
-
-A reload should try to restore the existing wallet session before showing a new Connect request.
-
-```ts
-import { restoreVexaniumSession, vexNative } from "@windstack/vexanium";
-
-const restored = await restoreVexaniumSession(vex, {
-  sessionId: savedSessionId,
-  chainId: vexNative.chainId,
-});
-```
-
-Store only the wallet-issued session ID. If the wallet reports an expired or revoked session, return to a disconnected state. Do not automatically start a new interactive connection during page startup.
-
+For provider-backed transactions, use `await wisp.getProviderClient()` and pass structured actions to the Vexanium client. The example wrapper keeps transaction form/business state local to the DApp.
 ## Wisp Telegram
 
-A normal HTTPS dApp can use the WindStack Wisp Telegram transport when the Wisp Native provider is not embedded in the page.
+Wisp Telegram is configured once as the canonical transport and passed into `createWispConnector()`. The connector owns restore/connect/disconnect and transport selection. The transport remains available to the example wrapper for Native transaction execution because `transact()` is a transport operation.
 
-```ts
-import { createWispTelegramTransport } from "@windstack/wallet-plugin-wisp";
-
-const wisp = createWispTelegramTransport({
-  apiUrl: "https://api.windcrypto.com/wisp/v1",
-  dapp: {
-    name: "My dApp",
-    origin: window.location.origin,
-    url: window.location.href,
-  },
-});
-```
-
-Restore first during startup:
-
-```ts
-const restored = await wisp.restore();
-```
-
-Only start a new connection after a user action:
-
-```ts
-const session = await wisp.connect();
-```
-
-Transactions use the same structured action format:
-
-```ts
-await wisp.transact(vex, {
-  actions: [
-    {
-      account: "vex.token",
-      name: "transfer",
-      data: {
-        from: session.account.actor,
-        to: "receiver",
-        quantity: "1.0000 VEX",
-        memo: "Telegram example",
-      },
-    },
-  ],
-});
-```
-
-The transport handles the request lifecycle, persistent session, return flow, and result delivery.
-
+Do not hand-build `/telegram/dapp/*` requests, polling, session persistence, or return-flow state in application code.
 ## VEX EVM
 
 VEX EVM uses standard Ethereum wallet interfaces. The examples use `@windstack/evm` for provider discovery and requests.
 
 ```ts
 import { createEVMClient, discoverEVMProviders } from "@windstack/evm";
+import { WISP_PROVIDER_RDNS } from "@windstack/wallet-plugin-wisp";
 
 const providers = await discoverEVMProviders();
-const wisp = providers.find(({ info }) => info.rdns === "com.wisp.wallet");
+const wisp = providers.find(({ info }) => info.rdns === WISP_PROVIDER_RDNS);
 
 if (!wisp) throw new Error("Wisp Wallet was not found");
 
